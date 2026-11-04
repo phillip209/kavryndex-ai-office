@@ -219,8 +219,8 @@ erDiagram
 | `task_dependencies` | task_id, depends_on_id |
 | `task_runs` | id, task_id, agent_id, attempt, status, provider, model, input_tokens, output_tokens, cost_usd, output, error, steps, started_at, finished_at |
 | `messages` | id, project_id, task_id, sender_agent_id, recipient_agent_id, kind (`handoff`/`report`/`request`), content |
-| `memory_entries` | id, scope (`agent`/`project`/`organization`), project_id, agent_id, key, content, source_task_id; único por (scope, project, agent, key) |
-| `approvals` | id, task_id, agent_id, tool_name, arguments, reason, status (`pending`/`approved`/`rejected`/`consumed`), decided_by, decided_at |
+| `memory_entries` | id, scope (`agent`/`project`/`organization`), scope_ref (id de agente, id de proyecto u `org`), project_id, agent_id, key, content, source_task_id, created_by; único por (scope, scope_ref, key) |
+| `approvals` | id, task_id, agent_id, tool_name, arguments, fingerprint (hash de herramienta + argumentos), reason, status (`pending`/`approved`/`rejected`/`consumed`), decided_by, decided_at |
 | `audit_events` | id, created_at, actor, action, entity_type, entity_id, project_id, details |
 
 IDs: UUID hex. Tipos portables (JSON, String, Text) para funcionar igual en SQLite y PostgreSQL.
