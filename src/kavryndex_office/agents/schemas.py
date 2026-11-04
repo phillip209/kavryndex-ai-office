@@ -54,5 +54,6 @@ class AgentRead(BaseModel):
     max_steps: int
     max_tokens_per_task: int
     status: AgentStatus
+    version: int
     created_at: datetime
     updated_at: datetime

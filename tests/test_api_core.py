@@ -59,11 +59,11 @@ def test_agent_validation_and_update(office: Office) -> None:
         "system_prompt": "Escribe.",
         "allowed_tools": ["shell_exec"],
     }
-    office.ok("POST", "/agents", 403, json=body)
+    office.ok("POST", "/agents", 422, json=body)
     body["allowed_tools"] = ["memory_write"]
     agent = office.ok("POST", "/agents", 201, json=body)
     office.ok("POST", "/agents", 409, json=body)
-    office.ok("PATCH", f"/agents/{agent['id']}", 403, json={"allowed_tools": ["nope"]})
+    office.ok("PATCH", f"/agents/{agent['id']}", 422, json={"allowed_tools": ["nope"]})
     updated = office.ok("PATCH", f"/agents/{agent['id']}", json={"status": "disabled"})
     assert updated["status"] == "disabled"
     assert office.ok("GET", f"/agents/{agent['id']}")["slug"] == "writer"

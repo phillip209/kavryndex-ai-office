@@ -6,7 +6,7 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 - Estándares: [`CONTRIBUTING.md`](CONTRIBUTING.md) · Seguridad: [`SECURITY.md`](SECURITY.md)
 - Decisiones de arquitectura: [`docs/adr/`](docs/adr/) · Despliegue: [`docs/deployment.md`](docs/deployment.md)
 
-## Estado: v0.1 (MVP del núcleo)
+## Estado: v0.2 (núcleo + migraciones y registro de agentes)
 
 | Capacidad | Estado |
 |---|---|
@@ -20,7 +20,9 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 | Auditoría, tokens y coste por ejecución | ✅ |
 | Proveedores: `mock` ($0) y OpenAI-compatible (Ollama, Groq, Gemini) | ✅ |
 | Proveedores de pago bloqueados por defecto | ✅ |
-| Migraciones Alembic, dashboard, Anthropic | ⏳ roadmap |
+| Migraciones Alembic (SQLite y PostgreSQL) y CLI de administración | ✅ |
+| Registro de agentes con reglas de coherencia, versiones y auditoría de cambios | ✅ |
+| Dashboard, adaptador Anthropic, búsqueda semántica | ⏳ roadmap |
 
 ## Requisitos
 
@@ -41,13 +43,30 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 uvicorn kavryndex_office.api:create_app --factory --reload
 ```
 
+La base de datos se migra automáticamente al arrancar (`OFFICE_AUTO_MIGRATE=true`).
+
+## CLI de administración
+
+```bash
+kavryndex-office migrate            # aplica migraciones pendientes
+kavryndex-office db-status          # revisión actual vs. última (código 1 si falta migrar)
+kavryndex-office bootstrap-agents   # crea los 6 agentes por defecto que falten
+kavryndex-office generate-key       # genera una API key (no la guarda)
+```
+
+## Cambiar el esquema
+
+1. Modificar los modelos en `src/kavryndex_office/models/`.
+2. `alembic revision --autogenerate -m "descripcion"` y **revisar** el archivo generado.
+3. `pytest` verifica que modelos y migraciones coinciden.
+
 Documentación interactiva de la API: <http://127.0.0.1:8000/docs> (botón **Authorize** → tu clave).
 
 ## Flujo de ejemplo
 
 ```bash
 KEY="tu-clave"; API=http://127.0.0.1:8000/api/v1
-# 1. Crear los 6 agentes por defecto
+# 1. Crear los 6 agentes por defecto (o: kavryndex-office bootstrap-agents)
 curl -X POST -H "X-API-Key: $KEY" $API/agents/bootstrap
 # 2. Crear un proyecto y dar acceso a especialistas
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \

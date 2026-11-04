@@ -40,6 +40,8 @@ class Agent(IdMixin, TimestampMixin, Base):
     max_steps: Mapped[int] = mapped_column(default=6)
     max_tokens_per_task: Mapped[int] = mapped_column(default=20_000)
     status: Mapped[AgentStatus] = mapped_column(enum_type(AgentStatus), default=AgentStatus.ACTIVE)
+    # Se incrementa en cada cambio de configuración (trazabilidad de instrucciones y permisos).
+    version: Mapped[int] = mapped_column(default=1, server_default="1")
 
     def has_project_access(self, project_id: str) -> bool:
         return ALL_PROJECTS in self.project_access or project_id in self.project_access

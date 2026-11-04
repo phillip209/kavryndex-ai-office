@@ -146,8 +146,15 @@ def list_tools() -> list[ToolRead]:
 
 # ---------------------------------------------------------------- agentes
 @api.post("/agents", response_model=AgentRead, status_code=status.HTTP_201_CREATED, tags=["agents"])
-def create_agent(data: AgentCreate, session: Session = SessionDep, actor: str = ActorDep) -> Any:
-    return agent_service.create_agent(session, data, actor=actor)
+def create_agent(
+    data: AgentCreate,
+    session: Session = SessionDep,
+    actor: str = ActorDep,
+    engine: ExecutionEngine = Depends(get_engine),
+) -> Any:
+    return agent_service.create_agent(
+        session, data, actor=actor, known_providers=engine.providers.names()
+    )
 
 
 @api.post("/agents/bootstrap", response_model=list[AgentRead], tags=["agents"])
@@ -167,9 +174,15 @@ def get_agent(agent_id: str, session: Session = SessionDep) -> Any:
 
 @api.patch("/agents/{agent_id}", response_model=AgentRead, tags=["agents"])
 def update_agent(
-    agent_id: str, data: AgentUpdate, session: Session = SessionDep, actor: str = ActorDep
+    agent_id: str,
+    data: AgentUpdate,
+    session: Session = SessionDep,
+    actor: str = ActorDep,
+    engine: ExecutionEngine = Depends(get_engine),
 ) -> Any:
-    return agent_service.update_agent(session, agent_id, data, actor=actor)
+    return agent_service.update_agent(
+        session, agent_id, data, actor=actor, known_providers=engine.providers.names()
+    )
 
 
 # ---------------------------------------------------------------- proyectos

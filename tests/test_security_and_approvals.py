@@ -115,7 +115,7 @@ def test_agent_losing_access_cannot_run(office: Office) -> None:
     office.ok(
         "PATCH",
         f"/agents/{agents['developer']['id']}",
-        json={"status": "disabled", "project_access": ["*"]},
+        json={"status": "disabled", "project_access": [project["id"]]},
     )
     office.ok("POST", f"/tasks/{task['id']}/run", 409)
 
@@ -128,8 +128,7 @@ def test_paid_provider_blocked_by_default(office: Office) -> None:
     office.ok("POST", f"/tasks/{task['id']}/run", 402)
     assert office.get_task(task["id"])["status"] == "pending"
 
-    office.ok("PATCH", f"/agents/{agents['research']['id']}", json={"provider": "unknown"})
-    office.ok("POST", f"/tasks/{task['id']}/run", 404)
+    office.ok("PATCH", f"/agents/{agents['research']['id']}", 422, json={"provider": "unknown"})
 
 
 def test_retry_then_success(office: Office) -> None:
