@@ -29,8 +29,10 @@ Arquitectura propuesta: **Render (web service Free)** + **Neon (PostgreSQL Free)
 1. Crear una base en Neon y copiar la cadena de conexión en formato `postgresql+psycopg://…`.
 2. Crear un *Web Service* en Render conectado al repositorio, plan **Free**:
    - Build: `pip install ".[postgres]"`
-   - Start: `uvicorn kavryndex_office.api:create_app --factory --host 0.0.0.0 --port $PORT`
+   - Start: `uvicorn kavryndex_office.api:create_app --factory --host 0.0.0.0 --port $PORT` (aplica migraciones al arrancar)
    - Variables: `OFFICE_ENV=production`, `OFFICE_DATABASE_URL`, `OFFICE_ADMIN_API_KEY`, `OFFICE_ALLOW_PAID_PROVIDERS=false`.
 3. Verificar `GET /health`.
 
-Limitaciones conocidas: el servicio Free de Render se suspende tras 15 minutos sin tráfico y tarda en despertar; su disco es efímero (por eso la base va en Neon). Antes del primer despliegue con datos reales se deben añadir migraciones Alembic (v0.2).
+Limitaciones conocidas: el servicio Free de Render se suspende tras 15 minutos sin tráfico y tarda en despertar; su disco es efímero (por eso la base va en Neon).
+
+Migraciones: por defecto se aplican al arrancar. Para controlarlas manualmente, poner `OFFICE_AUTO_MIGRATE=false` y ejecutar `kavryndex-office migrate` antes de cada despliegue; la app se niega a arrancar si la base no está al día.

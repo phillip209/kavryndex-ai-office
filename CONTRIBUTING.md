@@ -15,6 +15,7 @@
 - `mypy src` sin errores.
 - `pytest` en verde con cobertura ≥ 85 %.
 - El núcleo **no importa SDKs de proveedores IA**: solo `providers/base.py`.
+- Todo cambio de modelo incluye su migración Alembic revisada; `pytest` falla si divergen.
 - Las pruebas **no usan red ni gastan dinero**: proveedor `mock` o transportes HTTP simulados.
 
 ## Decisiones de arquitectura

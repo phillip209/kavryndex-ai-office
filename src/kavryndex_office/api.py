@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from kavryndex_office import __version__
 from kavryndex_office.config import Settings
-from kavryndex_office.db import init_db, make_engine, make_session_factory
+from kavryndex_office.db import check_up_to_date, init_db, make_engine, make_session_factory
 from kavryndex_office.errors import (
     BudgetExceededError,
     ConflictError,
@@ -16,6 +16,7 @@ from kavryndex_office.errors import (
     NotFoundError,
     OfficeError,
     PermissionDeniedError,
+    ValidationFailedError,
 )
 from kavryndex_office.execution.engine import ExecutionEngine
 from kavryndex_office.execution.orchestrator import Orchestrator
@@ -28,6 +29,7 @@ _STATUS_BY_ERROR: dict[type[OfficeError], int] = {
     PermissionDeniedError: status.HTTP_403_FORBIDDEN,
     InvalidStateError: status.HTTP_409_CONFLICT,
     BudgetExceededError: status.HTTP_402_PAYMENT_REQUIRED,
+    ValidationFailedError: 422,
 }
 
 
@@ -36,7 +38,14 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()
     db_engine = make_engine(settings.database_url)
-    init_db(db_engine)
+    try:
+        if settings.auto_migrate:
+            init_db(db_engine)
+        else:
+            check_up_to_date(db_engine)
+    except Exception:
+        db_engine.dispose()
+        raise
     registry = providers or build_registry(settings)
     execution = ExecutionEngine(registry, settings)
 

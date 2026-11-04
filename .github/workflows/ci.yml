@@ -55,7 +55,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Instalar dependencias
-        run: pip install -e ".[dev,postgres]"
+      - name: Instalar paquete (no editable, como en producción)
+        run: pip install ".[dev,postgres]"
+      - name: Migrar con la CLI instalada
+        env:
+          OFFICE_DATABASE_URL: postgresql+psycopg://office:office@localhost:5432/office_test
+        run: kavryndex-office migrate && kavryndex-office db-status
       - name: Pruebas contra PostgreSQL
-        run: pytest --no-cov tests/test_api_core.py tests/test_tasks_and_execution.py tests/test_security_and_approvals.py
+        run: pytest --no-cov tests/test_api_core.py tests/test_tasks_and_execution.py tests/test_security_and_approvals.py tests/test_registry_and_migrations.py::test_migrations_match_models_and_downgrade

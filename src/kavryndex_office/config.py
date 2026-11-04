@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     env: str = "development"
     database_url: str = "sqlite:///./data/office.db"
     admin_api_key: SecretStr | None = None
+    # True: aplica migraciones al arrancar. False: exige que ya estén aplicadas.
+    auto_migrate: bool = True
 
     # Política de coste: con False, ningún proveedor marcado como de pago puede ejecutarse.
     allow_paid_providers: bool = False
