@@ -117,7 +117,7 @@ class ExecutionEngine:
             raise InvalidStateError(f"La tarea está en estado {task.status.value}, no pending")
         if task.assignee_id is None:
             raise InvalidStateError("La tarea no tiene agente asignado")
-        if not task.dependencies_completed():
+        if not task_service.dependencies_satisfied(session, task):
             raise InvalidStateError("La tarea tiene dependencias sin completar")
         if task.next_attempt_at and as_utc(task.next_attempt_at) > self.clock():
             raise InvalidStateError(
@@ -136,6 +136,9 @@ class ExecutionEngine:
         self, session: Session, task: Task, agent: Agent, provider: LLMProvider, run: TaskRun
     ) -> str:
         tools = tools_for(agent.allowed_tools)
+        if task.await_descendants:
+            # Un informe de consolidación no crea trabajo nuevo que nadie esperaría.
+            tools = [t for t in tools if t.name != "task_delegate"]
         messages = [
             ChatMessage("system", with_office_rules(agent.system_prompt)),
             ChatMessage("user", self._build_prompt(session, task, agent)),
@@ -146,7 +149,13 @@ class ExecutionEngine:
             "agent_slug": agent.slug,
             "attempt": task.attempts,
         }
-        ctx = ToolContext(session=session, agent=agent, task=task, actor=agent_actor(agent.slug))
+        ctx = ToolContext(
+            session=session,
+            agent=agent,
+            task=task,
+            actor=agent_actor(agent.slug),
+            settings=self.settings,
+        )
         deadline = self.clock() + timedelta(seconds=task.timeout_s)
 
         for step in range(1, agent.max_steps + 1):
@@ -244,6 +253,29 @@ class ExecutionEngine:
         if task.dependencies:
             lines = [f"- {d.title}: {d.result or '(sin resultado)'}" for d in task.dependencies]
             parts.append("## Resultados entregados por tareas previas\n" + "\n".join(lines))
+        if task.await_descendants:
+            team = [d for dep in task.dependencies for d in task_service.descendants(session, dep)]
+            if team:
+                names = {a.id: a.slug for a in agent_service.list_agents(session)}
+                lines = [
+                    f"- [{d.status.value}] {d.title} ({names.get(d.assignee_id or '', '?')}): "
+                    f"{d.result or d.error or '(sin resultado)'}"
+                    for d in team
+                ]
+                parts.append("## Resultados del equipo\n" + "\n".join(lines))
+        if agent.can_delegate:
+            roster = [
+                a
+                for a in agent_service.list_agents(session)
+                if a.id != agent.id
+                and a.status is AgentStatus.ACTIVE
+                and a.has_project_access(task.project_id)
+            ]
+            lines = [f"- {a.slug}: {a.name} — {a.department}. {a.description}" for a in roster]
+            parts.append(
+                "## Equipo disponible para delegar (assignee_slug)\n"
+                + ("\n".join(lines) or "(ningún especialista tiene acceso a este proyecto)")
+            )
         entries = memory_service.readable_for_agent(
             session, agent, project_id=task.project_id, limit=self.settings.memory_context_limit
         )

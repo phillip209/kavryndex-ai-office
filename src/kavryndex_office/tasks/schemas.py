@@ -43,6 +43,7 @@ class TaskRead(BaseModel):
     attempts: int
     max_attempts: int
     timeout_s: int
+    await_descendants: bool
     next_attempt_at: datetime | None
     result: str | None
     error: str | None
@@ -70,3 +71,26 @@ class TaskRunRead(BaseModel):
     tool_calls: list[dict[str, Any]]
     started_at: datetime
     finished_at: datetime | None
+
+
+class GoalCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    description: str = ""
+    input: dict[str, Any] = Field(default_factory=dict)
+    priority: int = Field(default=0, ge=-100, le=100)
+    planner_slug: str = "ceo"
+
+
+class GoalRead(BaseModel):
+    plan_task: TaskRead
+    report_task: TaskRead
+
+
+class TaskNode(BaseModel):
+    id: str
+    title: str
+    status: TaskStatus
+    assignee_id: str | None
+    result: str | None
+    error: str | None
+    children: list["TaskNode"] = Field(default_factory=list)

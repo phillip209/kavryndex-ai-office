@@ -33,8 +33,11 @@ from kavryndex_office.security import (
 from kavryndex_office.tasks import service as task_service
 from kavryndex_office.tasks.schemas import (
     DependencyChange,
+    GoalCreate,
+    GoalRead,
     TaskAssign,
     TaskCreate,
+    TaskNode,
     TaskRead,
     TaskRunRead,
 )
@@ -240,6 +243,21 @@ def run_project(
     return orchestrator.run_project(session, project_id, actor=actor, max_tasks=limit)
 
 
+@api.post(
+    "/projects/{project_id}/goals",
+    response_model=GoalRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["execution"],
+)
+def create_goal(
+    project_id: str, data: GoalCreate, session: Session = SessionDep, actor: str = ActorDep
+) -> Any:
+    plan, report = task_service.create_goal(
+        session, project_id=project_id, actor=actor, **data.model_dump()
+    )
+    return {"plan_task": plan, "report_task": report}
+
+
 # ---------------------------------------------------------------- tareas
 @api.post("/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED, tags=["tasks"])
 def create_task(data: TaskCreate, session: Session = SessionDep, actor: str = ActorDep) -> Any:
@@ -268,6 +286,22 @@ def list_tasks(
 @api.get("/tasks/{task_id}", response_model=TaskRead, tags=["tasks"])
 def get_task(task_id: str, session: Session = SessionDep) -> Any:
     return task_service.get_task(session, task_id)
+
+
+@api.get("/tasks/{task_id}/tree", response_model=TaskNode, tags=["tasks"])
+def task_tree(task_id: str, session: Session = SessionDep) -> TaskNode:
+    def build(task: Any) -> TaskNode:
+        return TaskNode(
+            id=task.id,
+            title=task.title,
+            status=task.status,
+            assignee_id=task.assignee_id,
+            result=task.result,
+            error=task.error,
+            children=[build(c) for c in task_service.children(session, task.id)],
+        )
+
+    return build(task_service.get_task(session, task_id))
 
 
 @api.post("/tasks/{task_id}/assign", response_model=TaskRead, tags=["tasks"])

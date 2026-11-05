@@ -1,5 +1,6 @@
 from kavryndex_office.config import Settings
 from kavryndex_office.errors import BudgetExceededError, NotFoundError
+from kavryndex_office.providers.anthropic import AnthropicProvider
 from kavryndex_office.providers.base import LLMProvider
 from kavryndex_office.providers.mock import MockProvider
 from kavryndex_office.providers.openai_compat import OpenAICompatProvider
@@ -42,6 +43,22 @@ def build_registry(settings: Settings) -> ProviderRegistry:
                 timeout_s=settings.openai_compat_timeout_s,
                 input_price_per_mtok=settings.openai_compat_input_price_per_mtok,
                 output_price_per_mtok=settings.openai_compat_output_price_per_mtok,
+            )
+        )
+    if settings.anthropic_api_key and settings.anthropic_api_key.get_secret_value():
+        prices = (settings.anthropic_input_price_per_mtok, settings.anthropic_output_price_per_mtok)
+        if prices[0] is None or prices[1] is None:
+            raise ValueError(
+                "Anthropic requiere OFFICE_ANTHROPIC_INPUT_PRICE_PER_MTOK y "
+                "OFFICE_ANTHROPIC_OUTPUT_PRICE_PER_MTOK para registrar costes"
+            )
+        registry.register(
+            AnthropicProvider(
+                api_key=settings.anthropic_api_key.get_secret_value(),
+                input_price_per_mtok=prices[0],
+                output_price_per_mtok=prices[1],
+                base_url=settings.anthropic_base_url,
+                timeout_s=settings.anthropic_timeout_s,
             )
         )
     return registry
