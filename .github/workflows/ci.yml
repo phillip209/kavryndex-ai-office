@@ -62,4 +62,4 @@ jobs:
           OFFICE_DATABASE_URL: postgresql+psycopg://office:office@localhost:5432/office_test
         run: kavryndex-office migrate && kavryndex-office db-status
       - name: Pruebas contra PostgreSQL
-        run: pytest --no-cov tests/test_api_core.py tests/test_tasks_and_execution.py tests/test_security_and_approvals.py tests/test_registry_and_migrations.py::test_migrations_match_models_and_downgrade tests/test_task_engine.py
+        run: pytest --no-cov tests/test_api_core.py tests/test_tasks_and_execution.py tests/test_security_and_approvals.py tests/test_registry_and_migrations.py::test_migrations_match_models_and_downgrade tests/test_task_engine.py tests/test_planner_and_anthropic.py

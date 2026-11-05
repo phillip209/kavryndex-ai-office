@@ -22,6 +22,15 @@ Pasos:
 2. Mantener `OFFICE_OPENAI_COMPAT_IS_PAID=true` salvo que se confirme que la cuenta no tiene facturación activa; solo entonces cambiarlo a `false`.
 3. Cambiar el proveedor de un agente: `PATCH /api/v1/agents/{id}` con `{"provider": "openai_compat", "model": "<modelo>"}`.
 
+### Anthropic (Claude) — de pago
+
+Requiere una cuenta en la consola de Anthropic con facturación, **solo con autorización del director**.
+
+1. En `.env`: `OFFICE_ANTHROPIC_API_KEY`, y los precios del modelo elegido en USD por millón de tokens (`OFFICE_ANTHROPIC_INPUT_PRICE_PER_MTOK`, `OFFICE_ANTHROPIC_OUTPUT_PRICE_PER_MTOK`). Sin precios la app no arranca, para que ningún gasto quede sin registrar.
+2. `OFFICE_ALLOW_PAID_PROVIDERS=true` (sin esto, cualquier ejecución con Anthropic responde 402).
+3. Asignar el proveedor a los agentes deseados: `PATCH /api/v1/agents/{id}` con `{"provider": "anthropic", "model": "<modelo>"}`.
+4. Recomendado: fijar un límite de gasto en la consola de Anthropic y mantener `max_tokens_per_task` bajo.
+
 ## 3. Cloud gratuito (fase posterior, requiere autorización)
 
 Arquitectura propuesta: **Render (web service Free)** + **Neon (PostgreSQL Free)**.

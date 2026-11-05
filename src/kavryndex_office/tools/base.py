@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from kavryndex_office.config import Settings
 from kavryndex_office.models import Agent, Task
 from kavryndex_office.providers.base import ToolDefinition
 
@@ -14,6 +15,7 @@ class ToolContext:
     agent: Agent
     task: Task
     actor: str
+    settings: Settings | None = None
 
 
 ToolHandler = Callable[[ToolContext, dict[str, Any]], dict[str, Any]]

@@ -99,6 +99,15 @@ def task_delegate(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         t.title: t.id
         for t in ctx.session.scalars(select(Task).where(Task.parent_id == ctx.task.id))
     }
+    if ctx.settings is not None:
+        if len(siblings) >= ctx.settings.max_delegations_per_task:
+            raise InvalidStateError(
+                f"Límite de {ctx.settings.max_delegations_per_task} subtareas por tarea alcanzado"
+            )
+        if task_service.depth(ctx.session, ctx.task) + 1 > ctx.settings.max_delegation_depth:
+            raise InvalidStateError(
+                f"Profundidad máxima de delegación ({ctx.settings.max_delegation_depth}) alcanzada"
+            )
     depends_on: list[str] = []
     for dep_title in args.get("depends_on_titles") or []:
         if dep_title not in siblings:

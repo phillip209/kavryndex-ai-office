@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="OFFICE_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="OFFICE_", env_file=".env", extra="ignore", env_ignore_empty=True
+    )
 
     env: str = "development"
     database_url: str = "sqlite:///./data/office.db"
@@ -23,6 +25,18 @@ class Settings(BaseSettings):
     openai_compat_timeout_s: float = 60.0
     openai_compat_input_price_per_mtok: float = 0.0
     openai_compat_output_price_per_mtok: float = 0.0
+
+    # Anthropic (Claude). De pago: requiere OFFICE_ALLOW_PAID_PROVIDERS=true y precios
+    # explícitos por millón de tokens (consultar la tarifa vigente del modelo elegido).
+    anthropic_api_key: SecretStr | None = None
+    anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_timeout_s: float = 60.0
+    anthropic_input_price_per_mtok: float | None = None
+    anthropic_output_price_per_mtok: float | None = None
+
+    # Delegación: límites contra planes desbocados.
+    max_delegations_per_task: int = 10
+    max_delegation_depth: int = 2
 
     # Límites operativos
     max_tasks_per_project_run: int = 25

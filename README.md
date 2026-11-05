@@ -6,7 +6,7 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 - Estándares: [`CONTRIBUTING.md`](CONTRIBUTING.md) · Seguridad: [`SECURITY.md`](SECURITY.md)
 - Decisiones de arquitectura: [`docs/adr/`](docs/adr/) · Despliegue: [`docs/deployment.md`](docs/deployment.md)
 
-## Estado: v0.3 (núcleo + migraciones + Task Engine robusto)
+## Estado: v0.4 (núcleo + migraciones + Task Engine + objetivos con CEO)
 
 | Capacidad | Estado |
 |---|---|
@@ -18,12 +18,13 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 | Memoria agente / proyecto / organización | ✅ (texto) |
 | Aprobaciones humanas para herramientas destructivas | ✅ |
 | Auditoría, tokens y coste por ejecución | ✅ |
-| Proveedores: `mock` ($0) y OpenAI-compatible (Ollama, Groq, Gemini) | ✅ |
+| Proveedores: `mock` ($0), OpenAI-compatible (Ollama, Groq, Gemini) y Anthropic (Claude, de pago) | ✅ |
 | Proveedores de pago bloqueados por defecto | ✅ |
 | Migraciones Alembic (SQLite y PostgreSQL) y CLI de administración | ✅ |
 | Registro de agentes con reglas de coherencia, versiones y auditoría de cambios | ✅ |
 | Task Engine: dependencias editables con detección de ciclos, reintentos con espera progresiva, tiempo máximo, recuperación de ejecuciones interrumpidas, reintento humano, paginación | ✅ |
-| Dashboard, adaptador Anthropic, búsqueda semántica | ⏳ roadmap |
+| Objetivos: el CEO planifica y delega viendo al equipo; informe final que espera todo el trabajo; límites de delegación; árbol de tareas | ✅ |
+| Dashboard, búsqueda semántica, herramientas externas | ⏳ roadmap |
 
 ## Requisitos
 
@@ -86,6 +87,18 @@ curl -H "X-API-Key: $KEY" "$API/messages?project_id=<ID>"
 curl -H "X-API-Key: $KEY" "$API/audit?project_id=<ID>"
 ```
 
+## Objetivos (flujo recomendado)
+
+```bash
+# El CEO planifica, delega al equipo con acceso al proyecto y entrega un informe final.
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"title":"Lanzar landing page","description":"Plazo: 2 semanas"}' $API/projects/<ID>/goals
+curl -X POST -H "X-API-Key: $KEY" $API/projects/<ID>/run
+curl -H "X-API-Key: $KEY" $API/tasks/<PLAN_ID>/tree
+```
+
+El informe final solo se ejecuta cuando todas las subtareas terminaron (incluidas las fallidas, que debe reportar). Con el proveedor `mock`, la delegación se simula con `input.mock_tool_calls`; con un modelo real, el CEO decide el plan.
+
 ## Ciclo de vida de las tareas
 
 - **Dependencias:** una tarea solo se ejecuta cuando todas sus dependencias están `completed`. Se pueden añadir o quitar mientras la tarea esté `pending`; se rechaza cualquier dependencia que cree un ciclo.
@@ -108,8 +121,8 @@ pytest              # incluye cobertura (mínimo 85 %)
 |---|---|
 | Sistema | `GET /system/info`, `GET /tools`, `POST /system/recover-stale`, `GET /health` (público) |
 | Agentes | `POST /agents`, `POST /agents/bootstrap`, `GET /agents`, `GET/PATCH /agents/{id}` |
-| Proyectos | `POST /projects`, `GET /projects`, `GET /projects/{id}`, `POST/DELETE /projects/{id}/members`, `POST /projects/{id}/run` |
-| Tareas | `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/assign`, `POST/DELETE /tasks/{id}/dependencies`, `POST /tasks/{id}/retry`, `POST /tasks/{id}/cancel`, `POST /tasks/{id}/run`, `GET /tasks/{id}/runs` |
+| Proyectos | `POST /projects`, `GET /projects`, `GET /projects/{id}`, `POST/DELETE /projects/{id}/members`, `POST /projects/{id}/goals`, `POST /projects/{id}/run` |
+| Tareas | `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/assign`, `POST/DELETE /tasks/{id}/dependencies`, `POST /tasks/{id}/retry`, `POST /tasks/{id}/cancel`, `POST /tasks/{id}/run`, `GET /tasks/{id}/runs`, `GET /tasks/{id}/tree` |
 | Aprobaciones | `GET /approvals`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject` |
 | Memoria | `GET /memory`, `PUT /memory` |
 | Comunicación | `GET /messages` |

@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, String, Table, Text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, String, Table, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from kavryndex_office.db import Base
@@ -60,6 +60,9 @@ class Task(IdMixin, TimestampMixin, Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     # Tiempo máximo de una ejecución (segundos), comprobado entre pasos del agente.
     timeout_s: Mapped[int] = mapped_column(default=300, server_default="300")
+    # Si es True, cada dependencia cuenta como resuelta solo cuando ella y todas sus
+    # subtareas (delegadas) han terminado. Lo usa el informe final de un objetivo.
+    await_descendants: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     dependencies: Mapped[list["Task"]] = relationship(
         secondary=task_dependencies,
