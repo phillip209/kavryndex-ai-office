@@ -42,8 +42,14 @@ def list_events(
     entity_id: str | None = None,
     action: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[AuditEvent]:
-    stmt = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)
+    stmt = (
+        select(AuditEvent)
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id)
+        .offset(offset)
+        .limit(limit)
+    )
     if project_id:
         stmt = stmt.where(AuditEvent.project_id == project_id)
     if entity_id:

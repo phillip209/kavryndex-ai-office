@@ -55,7 +55,12 @@ def _reset_database(url: str) -> None:
 @pytest.fixture
 def settings() -> Settings:
     _reset_database(TEST_DATABASE_URL)
-    return Settings(database_url=TEST_DATABASE_URL, admin_api_key=API_KEY, _env_file=None)  # type: ignore[call-arg]
+    return Settings(  # type: ignore[call-arg]
+        database_url=TEST_DATABASE_URL,
+        admin_api_key=API_KEY,
+        retry_base_delay_s=0,
+        _env_file=None,
+    )
 
 
 @pytest.fixture

@@ -35,6 +35,9 @@ def make_engine(url: str) -> Engine:
         else:
             db_path = url.split("///", 1)[-1]
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    elif url.startswith("postgresql"):
+        # Todas las fechas se leen y escriben en UTC, sea cual sea la zona del servidor.
+        kwargs["connect_args"] = {"options": "-c timezone=UTC"}
     engine = create_engine(url, **kwargs)
 
     if is_sqlite:

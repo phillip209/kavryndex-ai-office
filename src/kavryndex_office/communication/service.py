@@ -47,8 +47,9 @@ def list_messages(
     task_id: str | None = None,
     recipient_agent_id: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[Message]:
-    stmt = select(Message).order_by(Message.created_at).limit(limit)
+    stmt = select(Message).order_by(Message.created_at, Message.id).offset(offset).limit(limit)
     if project_id:
         stmt = stmt.where(Message.project_id == project_id)
     if task_id:

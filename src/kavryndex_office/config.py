@@ -26,4 +26,9 @@ class Settings(BaseSettings):
 
     # Límites operativos
     max_tasks_per_project_run: int = 25
+    # Reintentos: espera = base * 2^(intento-1), con tope.
+    retry_base_delay_s: float = 5.0
+    retry_max_delay_s: float = 300.0
+    # Ejecuciones en "running" más antiguas que esto se consideran interrumpidas.
+    stale_run_after_s: int = 900
     memory_context_limit: int = 20

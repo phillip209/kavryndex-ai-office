@@ -56,6 +56,10 @@ class Task(IdMixin, TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Reintentos con espera progresiva: la tarea no está lista antes de esta fecha.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    # Tiempo máximo de una ejecución (segundos), comprobado entre pasos del agente.
+    timeout_s: Mapped[int] = mapped_column(default=300, server_default="300")
 
     dependencies: Mapped[list["Task"]] = relationship(
         secondary=task_dependencies,

@@ -117,8 +117,14 @@ def list_entries(
     project_id: str | None = None,
     agent_id: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[MemoryEntry]:
-    stmt = select(MemoryEntry).order_by(MemoryEntry.updated_at.desc()).limit(limit)
+    stmt = (
+        select(MemoryEntry)
+        .order_by(MemoryEntry.updated_at.desc(), MemoryEntry.id)
+        .offset(offset)
+        .limit(limit)
+    )
     if scope:
         stmt = stmt.where(MemoryEntry.scope == scope)
     if project_id:

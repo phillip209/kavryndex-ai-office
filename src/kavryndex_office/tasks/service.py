@@ -1,5 +1,6 @@
 """Task Management Engine: creación, asignación, dependencias y estados."""
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from kavryndex_office.models import (
     TaskRun,
     TaskStatus,
 )
+from kavryndex_office.models.common import as_utc, utcnow
 from kavryndex_office.projects import service as project_service
 
 
@@ -33,8 +35,10 @@ def list_tasks(
     status: TaskStatus | None = None,
     assignee_id: str | None = None,
     parent_id: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[Task]:
-    stmt = select(Task).order_by(Task.created_at)
+    stmt = select(Task).order_by(Task.created_at, Task.id).offset(offset).limit(limit)
     if project_id:
         stmt = stmt.where(Task.project_id == project_id)
     if status:
@@ -71,6 +75,7 @@ def create_task(
     assignee_slug: str | None = None,
     depends_on: list[str] | None = None,
     max_attempts: int = 2,
+    timeout_s: int = 300,
     parent_id: str | None = None,
 ) -> Task:
     project_service.get_project(session, project_id)
@@ -96,6 +101,7 @@ def create_task(
         parent_id=parent_id,
         created_by=actor,
         max_attempts=max_attempts,
+        timeout_s=timeout_s,
         dependencies=dependencies,
     )
     session.add(task)
@@ -152,18 +158,108 @@ def cancel_task(session: Session, task_id: str, *, actor: str) -> Task:
     return task
 
 
-def is_ready(task: Task) -> bool:
+def is_due(task: Task, now: datetime) -> bool:
+    return task.next_attempt_at is None or as_utc(task.next_attempt_at) <= now
+
+
+def is_ready(task: Task, now: datetime | None = None) -> bool:
     return (
         task.status is TaskStatus.PENDING
         and task.assignee_id is not None
         and task.dependencies_completed()
+        and is_due(task, now or utcnow())
     )
 
 
-def ready_tasks(session: Session, project_id: str) -> list[Task]:
+def ready_tasks(session: Session, project_id: str, now: datetime | None = None) -> list[Task]:
+    now = now or utcnow()
     pending = session.scalars(
         select(Task)
         .where(Task.project_id == project_id, Task.status == TaskStatus.PENDING)
-        .order_by(Task.priority.desc(), Task.created_at)
+        .order_by(Task.priority.desc(), Task.created_at, Task.id)
     )
-    return [t for t in pending if is_ready(t)]
+    return [t for t in pending if is_ready(t, now)]
+
+
+def _reaches(start: Task, target_id: str) -> bool:
+    """True si ``target_id`` es alcanzable desde ``start`` siguiendo dependencias."""
+    stack, seen = [start], set()
+    while stack:
+        node = stack.pop()
+        if node.id == target_id:
+            return True
+        if node.id in seen:
+            continue
+        seen.add(node.id)
+        stack.extend(node.dependencies)
+    return False
+
+
+def add_dependencies(session: Session, task_id: str, dep_ids: list[str], *, actor: str) -> Task:
+    task = get_task(session, task_id)
+    if task.status is not TaskStatus.PENDING:
+        raise InvalidStateError("Solo se pueden cambiar dependencias de tareas pendientes")
+    added: list[str] = []
+    for dep_id in dict.fromkeys(dep_ids):
+        if dep_id in task.dependency_ids:
+            continue
+        dep = get_task(session, dep_id)
+        if dep.project_id != task.project_id:
+            raise InvalidStateError("Las dependencias deben pertenecer al mismo proyecto")
+        if dep.id == task.id or _reaches(dep, task.id):
+            raise InvalidStateError(f"La dependencia '{dep.title}' crearía un ciclo")
+        task.dependencies.append(dep)
+        added.append(dep.id)
+    if added:
+        record(
+            session,
+            actor=actor,
+            action="task.dependencies_added",
+            entity_type="task",
+            entity_id=task.id,
+            project_id=task.project_id,
+            details={"added": added},
+        )
+    return task
+
+
+def remove_dependencies(session: Session, task_id: str, dep_ids: list[str], *, actor: str) -> Task:
+    task = get_task(session, task_id)
+    if task.status is not TaskStatus.PENDING:
+        raise InvalidStateError("Solo se pueden cambiar dependencias de tareas pendientes")
+    removed = [d.id for d in task.dependencies if d.id in dep_ids]
+    task.dependencies = [d for d in task.dependencies if d.id not in dep_ids]
+    if removed:
+        record(
+            session,
+            actor=actor,
+            action="task.dependencies_removed",
+            entity_type="task",
+            entity_id=task.id,
+            project_id=task.project_id,
+            details={"removed": removed},
+        )
+    return task
+
+
+def retry_task(session: Session, task_id: str, *, actor: str) -> Task:
+    """Reabre una tarea fallida con un presupuesto de intentos nuevo (decisión humana)."""
+    task = get_task(session, task_id)
+    if task.status is not TaskStatus.FAILED:
+        raise InvalidStateError("Solo se pueden reintentar tareas fallidas")
+    previous_error = task.error
+    task.status = TaskStatus.PENDING
+    task.attempts = 0
+    task.error = None
+    task.next_attempt_at = None
+    task.completed_at = None
+    record(
+        session,
+        actor=actor,
+        action="task.requeued",
+        entity_type="task",
+        entity_id=task.id,
+        project_id=task.project_id,
+        details={"previous_error": previous_error},
+    )
+    return task

@@ -15,6 +15,11 @@ class TaskCreate(BaseModel):
     assignee_slug: str | None = None
     depends_on: list[str] = Field(default_factory=list, description="IDs de tareas previas.")
     max_attempts: int = Field(default=2, ge=1, le=10)
+    timeout_s: int = Field(default=300, ge=10, le=3600)
+
+
+class DependencyChange(BaseModel):
+    depends_on: list[str] = Field(min_length=1)
 
 
 class TaskAssign(BaseModel):
@@ -37,6 +42,8 @@ class TaskRead(BaseModel):
     dependency_ids: list[str]
     attempts: int
     max_attempts: int
+    timeout_s: int
+    next_attempt_at: datetime | None
     result: str | None
     error: str | None
     created_at: datetime

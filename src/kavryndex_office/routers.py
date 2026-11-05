@@ -31,7 +31,13 @@ from kavryndex_office.security import (
     require_admin,
 )
 from kavryndex_office.tasks import service as task_service
-from kavryndex_office.tasks.schemas import TaskAssign, TaskCreate, TaskRead, TaskRunRead
+from kavryndex_office.tasks.schemas import (
+    DependencyChange,
+    TaskAssign,
+    TaskCreate,
+    TaskRead,
+    TaskRunRead,
+)
 from kavryndex_office.tools.registry import TOOLS
 
 public = APIRouter()
@@ -39,6 +45,8 @@ api = APIRouter(dependencies=[Depends(require_admin)])
 
 SessionDep = Depends(get_session)
 ActorDep = Depends(require_admin)
+LimitQuery = Query(default=100, ge=1, le=500)
+OffsetQuery = Query(default=0, ge=0)
 
 
 # ---------------------------------------------------------------- esquemas de lectura simples
@@ -243,10 +251,17 @@ def list_tasks(
     project_id: str | None = None,
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
     parent_id: str | None = None,
+    limit: int = LimitQuery,
+    offset: int = OffsetQuery,
     session: Session = SessionDep,
 ) -> Any:
     return task_service.list_tasks(
-        session, project_id=project_id, status=status_filter, parent_id=parent_id
+        session,
+        project_id=project_id,
+        status=status_filter,
+        parent_id=parent_id,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -260,6 +275,32 @@ def assign_task(
     task_id: str, data: TaskAssign, session: Session = SessionDep, actor: str = ActorDep
 ) -> Any:
     return task_service.assign_task(session, task_id, data.assignee_slug, actor=actor)
+
+
+@api.post("/tasks/{task_id}/dependencies", response_model=TaskRead, tags=["tasks"])
+def add_dependencies(
+    task_id: str, data: DependencyChange, session: Session = SessionDep, actor: str = ActorDep
+) -> Any:
+    return task_service.add_dependencies(session, task_id, data.depends_on, actor=actor)
+
+
+@api.delete("/tasks/{task_id}/dependencies", response_model=TaskRead, tags=["tasks"])
+def remove_dependencies(
+    task_id: str, data: DependencyChange, session: Session = SessionDep, actor: str = ActorDep
+) -> Any:
+    return task_service.remove_dependencies(session, task_id, data.depends_on, actor=actor)
+
+
+@api.post("/tasks/{task_id}/retry", response_model=TaskRead, tags=["tasks"])
+def retry_task(task_id: str, session: Session = SessionDep, actor: str = ActorDep) -> Any:
+    return task_service.retry_task(session, task_id, actor=actor)
+
+
+@api.post("/system/recover-stale", tags=["system"])
+def recover_stale(
+    session: Session = SessionDep, engine: ExecutionEngine = Depends(get_engine)
+) -> dict[str, int]:
+    return {"recovered": engine.recover_stale(session)}
 
 
 @api.post("/tasks/{task_id}/cancel", response_model=TaskRead, tags=["tasks"])
@@ -287,9 +328,13 @@ def list_runs(task_id: str, session: Session = SessionDep) -> Any:
 def list_approvals(
     status_filter: ApprovalStatus | None = Query(default=None, alias="status"),
     task_id: str | None = None,
+    limit: int = LimitQuery,
+    offset: int = OffsetQuery,
     session: Session = SessionDep,
 ) -> Any:
-    return approval_service.list_approvals(session, status=status_filter, task_id=task_id)
+    return approval_service.list_approvals(
+        session, status=status_filter, task_id=task_id, limit=limit, offset=offset
+    )
 
 
 @api.post("/approvals/{approval_id}/approve", response_model=ApprovalRead, tags=["approvals"])
@@ -320,10 +365,12 @@ def list_memory(
     scope: MemoryScope | None = None,
     project_id: str | None = None,
     agent_id: str | None = None,
+    limit: int = LimitQuery,
+    offset: int = OffsetQuery,
     session: Session = SessionDep,
 ) -> Any:
     return memory_service.list_entries(
-        session, scope=scope, project_id=project_id, agent_id=agent_id
+        session, scope=scope, project_id=project_id, agent_id=agent_id, limit=limit, offset=offset
     )
 
 
@@ -338,9 +385,15 @@ def write_memory(data: MemoryWrite, session: Session = SessionDep, actor: str = 
 
 @api.get("/messages", response_model=list[MessageRead], tags=["communication"])
 def list_messages(
-    project_id: str | None = None, task_id: str | None = None, session: Session = SessionDep
+    project_id: str | None = None,
+    task_id: str | None = None,
+    limit: int = LimitQuery,
+    offset: int = OffsetQuery,
+    session: Session = SessionDep,
 ) -> Any:
-    return comm_service.list_messages(session, project_id=project_id, task_id=task_id)
+    return comm_service.list_messages(
+        session, project_id=project_id, task_id=task_id, limit=limit, offset=offset
+    )
 
 
 @api.get("/audit", response_model=list[AuditRead], tags=["audit"])
@@ -349,8 +402,14 @@ def list_audit(
     entity_id: str | None = None,
     action: str | None = None,
     limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = OffsetQuery,
     session: Session = SessionDep,
 ) -> Any:
     return audit_service.list_events(
-        session, project_id=project_id, entity_id=entity_id, action=action, limit=limit
+        session,
+        project_id=project_id,
+        entity_id=entity_id,
+        action=action,
+        limit=limit,
+        offset=offset,
     )

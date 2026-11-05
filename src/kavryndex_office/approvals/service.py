@@ -26,9 +26,14 @@ def get_approval(session: Session, approval_id: str) -> Approval:
 
 
 def list_approvals(
-    session: Session, *, status: ApprovalStatus | None = None, task_id: str | None = None
+    session: Session,
+    *,
+    status: ApprovalStatus | None = None,
+    task_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[Approval]:
-    stmt = select(Approval).order_by(Approval.created_at)
+    stmt = select(Approval).order_by(Approval.created_at, Approval.id).offset(offset).limit(limit)
     if status:
         stmt = stmt.where(Approval.status == status)
     if task_id:

@@ -6,7 +6,7 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 - Estándares: [`CONTRIBUTING.md`](CONTRIBUTING.md) · Seguridad: [`SECURITY.md`](SECURITY.md)
 - Decisiones de arquitectura: [`docs/adr/`](docs/adr/) · Despliegue: [`docs/deployment.md`](docs/deployment.md)
 
-## Estado: v0.2 (núcleo + migraciones y registro de agentes)
+## Estado: v0.3 (núcleo + migraciones + Task Engine robusto)
 
 | Capacidad | Estado |
 |---|---|
@@ -22,6 +22,7 @@ Plataforma independiente, modular y API-first para operar una oficina de agentes
 | Proveedores de pago bloqueados por defecto | ✅ |
 | Migraciones Alembic (SQLite y PostgreSQL) y CLI de administración | ✅ |
 | Registro de agentes con reglas de coherencia, versiones y auditoría de cambios | ✅ |
+| Task Engine: dependencias editables con detección de ciclos, reintentos con espera progresiva, tiempo máximo, recuperación de ejecuciones interrumpidas, reintento humano, paginación | ✅ |
 | Dashboard, adaptador Anthropic, búsqueda semántica | ⏳ roadmap |
 
 ## Requisitos
@@ -85,6 +86,14 @@ curl -H "X-API-Key: $KEY" "$API/messages?project_id=<ID>"
 curl -H "X-API-Key: $KEY" "$API/audit?project_id=<ID>"
 ```
 
+## Ciclo de vida de las tareas
+
+- **Dependencias:** una tarea solo se ejecuta cuando todas sus dependencias están `completed`. Se pueden añadir o quitar mientras la tarea esté `pending`; se rechaza cualquier dependencia que cree un ciclo.
+- **Reintentos automáticos:** ante un fallo transitorio (proveedor o tiempo máximo) la tarea vuelve a `pending` con `next_attempt_at` = ahora + `OFFICE_RETRY_BASE_DELAY_S` × 2^(intento−1), con tope `OFFICE_RETRY_MAX_DELAY_S`, hasta agotar `max_attempts`.
+- **Tiempo máximo:** `timeout_s` por tarea (10–3600 s), comprobado entre pasos del agente; la duración de cada llamada al modelo la limita el timeout HTTP del proveedor.
+- **Recuperación:** ejecuciones que quedan en `running` más de `OFFICE_STALE_RUN_AFTER_S` (p. ej. tras un reinicio del servidor) se cierran al ejecutar un proyecto o con `POST /system/recover-stale`.
+- **Reintento humano:** `POST /tasks/{id}/retry` reabre una tarea `failed` con intentos nuevos (queda auditado).
+
 ## Calidad
 
 ```bash
@@ -97,11 +106,13 @@ pytest              # incluye cobertura (mínimo 85 %)
 
 | Recurso | Endpoints |
 |---|---|
-| Sistema | `GET /system/info`, `GET /tools`, `GET /health` (público) |
+| Sistema | `GET /system/info`, `GET /tools`, `POST /system/recover-stale`, `GET /health` (público) |
 | Agentes | `POST /agents`, `POST /agents/bootstrap`, `GET /agents`, `GET/PATCH /agents/{id}` |
 | Proyectos | `POST /projects`, `GET /projects`, `GET /projects/{id}`, `POST/DELETE /projects/{id}/members`, `POST /projects/{id}/run` |
-| Tareas | `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/assign`, `POST /tasks/{id}/cancel`, `POST /tasks/{id}/run`, `GET /tasks/{id}/runs` |
+| Tareas | `POST /tasks`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/assign`, `POST/DELETE /tasks/{id}/dependencies`, `POST /tasks/{id}/retry`, `POST /tasks/{id}/cancel`, `POST /tasks/{id}/run`, `GET /tasks/{id}/runs` |
 | Aprobaciones | `GET /approvals`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject` |
 | Memoria | `GET /memory`, `PUT /memory` |
 | Comunicación | `GET /messages` |
 | Auditoría | `GET /audit` |
+
+Los listados aceptan `limit` (1–500, por defecto 100) y `offset`.
