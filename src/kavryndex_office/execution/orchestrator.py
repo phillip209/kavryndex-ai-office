@@ -17,7 +17,9 @@ class ProjectRunSummary:
     executed: list[dict[str, str]] = field(default_factory=list)
     stopped_reason: str = "no_ready_tasks"
     remaining_pending: int = 0
+    deferred_retries: int = 0
     waiting_approval: int = 0
+    recovered_stale_runs: int = 0
 
 
 class Orchestrator:
@@ -33,6 +35,7 @@ class Orchestrator:
         """
         project_service.get_project(session, project_id)
         summary = ProjectRunSummary(project_id=project_id)
+        summary.recovered_stale_runs = self.engine.recover_stale(session, project_id=project_id)
         record(
             session,
             actor=actor,
@@ -48,7 +51,7 @@ class Orchestrator:
             if len(summary.executed) >= max_tasks:
                 summary.stopped_reason = "max_tasks_reached"
                 break
-            ready = task_service.ready_tasks(session, project_id)
+            ready = task_service.ready_tasks(session, project_id, self.engine.clock())
             if not ready:
                 break
             task = ready[0]
@@ -59,6 +62,9 @@ class Orchestrator:
             )
 
         tasks = task_service.list_tasks(session, project_id=project_id)
-        summary.remaining_pending = sum(t.status is TaskStatus.PENDING for t in tasks)
+        now = self.engine.clock()
+        pending = [t for t in tasks if t.status is TaskStatus.PENDING]
+        summary.remaining_pending = len(pending)
+        summary.deferred_retries = sum(not task_service.is_due(t, now) for t in pending)
         summary.waiting_approval = sum(t.status is TaskStatus.WAITING_APPROVAL for t in tasks)
         return summary

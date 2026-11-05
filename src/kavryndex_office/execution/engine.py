@@ -1,8 +1,11 @@
 """Execution Engine: ejecuta una tarea con su agente de forma controlada."""
 
 import json
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from kavryndex_office.agents import service as agent_service
@@ -17,6 +20,7 @@ from kavryndex_office.errors import (
     NotFoundError,
     PermissionDeniedError,
     ProviderError,
+    TaskTimeoutError,
 )
 from kavryndex_office.memory import service as memory_service
 from kavryndex_office.models import (
@@ -29,7 +33,7 @@ from kavryndex_office.models import (
     TaskRun,
     TaskStatus,
 )
-from kavryndex_office.models.common import utcnow
+from kavryndex_office.models.common import as_utc, utcnow
 from kavryndex_office.providers.base import ChatMessage, CompletionRequest, LLMProvider, ToolCall
 from kavryndex_office.providers.registry import ProviderRegistry
 from kavryndex_office.tasks import service as task_service
@@ -38,6 +42,7 @@ from kavryndex_office.tools.registry import TOOLS, tools_for
 
 MAX_COMPLETION_TOKENS = 1024
 _PERMANENT_ERRORS = (PermissionDeniedError, BudgetExceededError, InvalidStateError, NotFoundError)
+_RETRYABLE_ERRORS = (ProviderError, TaskTimeoutError)
 _RECOVERABLE_TOOL_ERRORS = (InvalidStateError, NotFoundError, PermissionDeniedError, ValueError)
 
 
@@ -48,9 +53,19 @@ class ApprovalRequiredError(Exception):
 
 
 class ExecutionEngine:
-    def __init__(self, providers: ProviderRegistry, settings: Settings) -> None:
+    def __init__(
+        self,
+        providers: ProviderRegistry,
+        settings: Settings,
+        clock: Callable[[], datetime] = utcnow,
+    ) -> None:
         self.providers = providers
         self.settings = settings
+        self.clock = clock
+
+    def retry_delay(self, attempt: int) -> timedelta:
+        base = self.settings.retry_base_delay_s * (2 ** max(attempt - 1, 0))
+        return timedelta(seconds=min(base, self.settings.retry_max_delay_s))
 
     # ------------------------------------------------------------------ API pública
     def run_task(self, session: Session, task_id: str, *, actor: str) -> TaskRun:
@@ -59,8 +74,9 @@ class ExecutionEngine:
 
         task.status = TaskStatus.RUNNING
         task.attempts += 1
-        task.started_at = task.started_at or utcnow()
+        task.started_at = task.started_at or self.clock()
         task.error = None
+        task.next_attempt_at = None
         run = TaskRun(
             task_id=task.id,
             agent_id=agent.id,
@@ -68,6 +84,7 @@ class ExecutionEngine:
             provider=provider.name,
             model=agent.model,
             tool_calls=[],
+            started_at=self.clock(),
         )
         session.add(run)
         session.flush()
@@ -87,7 +104,7 @@ class ExecutionEngine:
             self._pause_for_approval(session, task, run, exc.approval)
         except _PERMANENT_ERRORS as exc:
             self._fail(session, task, run, exc, retry=False)
-        except ProviderError as exc:
+        except _RETRYABLE_ERRORS as exc:
             self._fail(session, task, run, exc, retry=task.attempts < task.max_attempts)
         else:
             self._complete(session, task, agent, run, output)
@@ -102,6 +119,10 @@ class ExecutionEngine:
             raise InvalidStateError("La tarea no tiene agente asignado")
         if not task.dependencies_completed():
             raise InvalidStateError("La tarea tiene dependencias sin completar")
+        if task.next_attempt_at and as_utc(task.next_attempt_at) > self.clock():
+            raise InvalidStateError(
+                f"Reintento programado para {as_utc(task.next_attempt_at).isoformat()}"
+            )
         agent = agent_service.get_agent(session, task.assignee_id)
         if agent.status is not AgentStatus.ACTIVE:
             raise InvalidStateError(f"El agente '{agent.slug}' está deshabilitado")
@@ -126,8 +147,11 @@ class ExecutionEngine:
             "attempt": task.attempts,
         }
         ctx = ToolContext(session=session, agent=agent, task=task, actor=agent_actor(agent.slug))
+        deadline = self.clock() + timedelta(seconds=task.timeout_s)
 
         for step in range(1, agent.max_steps + 1):
+            if self.clock() > deadline:
+                raise TaskTimeoutError(f"Tiempo máximo excedido ({task.timeout_s} s)")
             run.steps = step
             response = provider.complete(
                 CompletionRequest(
@@ -236,7 +260,7 @@ class ExecutionEngine:
     def _complete(
         self, session: Session, task: Task, agent: Agent, run: TaskRun, output: str
     ) -> None:
-        now = utcnow()
+        now = self.clock()
         task.status = TaskStatus.COMPLETED
         task.result = output
         task.completed_at = now
@@ -280,7 +304,7 @@ class ExecutionEngine:
         task.status = TaskStatus.WAITING_APPROVAL
         task.attempts -= 1  # una pausa no consume intentos
         run.status = RunStatus.WAITING_APPROVAL
-        run.finished_at = utcnow()
+        run.finished_at = self.clock()
         record(
             session,
             actor="system",
@@ -294,7 +318,7 @@ class ExecutionEngine:
     def _fail(
         self, session: Session, task: Task, run: TaskRun, exc: Exception, *, retry: bool
     ) -> None:
-        now = utcnow()
+        now = self.clock()
         message = f"{type(exc).__name__}: {exc}"
         run.status = RunStatus.FAILED
         run.error = message
@@ -302,6 +326,7 @@ class ExecutionEngine:
         task.error = message
         if retry:
             task.status = TaskStatus.PENDING
+            task.next_attempt_at = now + self.retry_delay(task.attempts)
         else:
             task.status = TaskStatus.FAILED
             task.completed_at = now
@@ -312,5 +337,40 @@ class ExecutionEngine:
             entity_type="task",
             entity_id=task.id,
             project_id=task.project_id,
-            details={"error": message, "attempt": task.attempts},
+            details={
+                "error": message,
+                "attempt": task.attempts,
+                "next_attempt_at": task.next_attempt_at.isoformat()
+                if retry and task.next_attempt_at
+                else None,
+            },
         )
+
+    # ------------------------------------------------------------------ recuperación
+    def recover_stale(self, session: Session, *, project_id: str | None = None) -> int:
+        """Cierra ejecuciones que quedaron en 'running' (p. ej. el proceso se reinició).
+
+        La tarea vuelve a 'pending' si le quedan intentos; si no, queda 'failed'.
+        """
+        cutoff = self.clock() - timedelta(seconds=self.settings.stale_run_after_s)
+        stmt = select(TaskRun).where(TaskRun.status == RunStatus.RUNNING)
+        if project_id:
+            stmt = stmt.join(Task, Task.id == TaskRun.task_id).where(Task.project_id == project_id)
+        recovered = 0
+        for run in session.scalars(stmt):
+            if as_utc(run.started_at) > cutoff:
+                continue
+            task = session.get(Task, run.task_id)
+            if task is None or task.status is not TaskStatus.RUNNING:
+                run.status = RunStatus.FAILED
+                run.finished_at = self.clock()
+                continue
+            self._fail(
+                session,
+                task,
+                run,
+                TaskTimeoutError("Ejecución interrumpida (sin finalizar)"),
+                retry=task.attempts < task.max_attempts,
+            )
+            recovered += 1
+        return recovered

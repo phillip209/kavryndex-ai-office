@@ -31,3 +31,7 @@ class BudgetExceededError(OfficeError):
 
 class ProviderError(OfficeError):
     """Fallo transitorio de un proveedor de IA (reintentable)."""
+
+
+class TaskTimeoutError(OfficeError):
+    """La ejecución superó su tiempo máximo (reintentable)."""

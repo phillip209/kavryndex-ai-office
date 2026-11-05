@@ -14,6 +14,11 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def as_utc(value: datetime) -> datetime:
+    """SQLite devuelve fechas sin zona horaria: se interpretan como UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
 def enum_type[E: StrEnum](enum_cls: type[E]) -> Enum:
     """Enum almacenado como texto (portable SQLite/PostgreSQL)."""
     return Enum(
